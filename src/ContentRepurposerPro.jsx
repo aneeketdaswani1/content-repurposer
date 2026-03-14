@@ -19,29 +19,88 @@ export default function ContentRepurposerPro() {
   useEffect(() => { setAnimateIn(true); }, []);
 
   const callAI = async (systemPrompt, userMessage) => {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+    if (!apiKey) {
+      throw new Error("Google API key not configured. Please add VITE_GOOGLE_API_KEY to .env");
+    }
+    
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-        "anthropic-dangerously-allow-browser": "true"
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20240620",
-        max_tokens: 4000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userMessage }],
+        contents: [{
+          parts: [{
+            text: `${systemPrompt}\n\n${userMessage}`
+          }]
+        }],
+        generationConfig: {
+          maxOutputTokens: 8000,
+        }
       }),
     });
     
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      const errorData = await response.json();
+      const errorMsg = errorData?.error?.message || `API error: ${response.status}`;
+      throw new Error(errorMsg);
     }
     
     const data = await response.json();
-    const text = data.content?.map((i) => (i.type === "text" ? i.text : "")).join("") || "";
-    return JSON.parse(text.replace(/```json|```/g, "").trim());
+    console.log("Gemini API Response:", data);
+    
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    if (!text) {
+      console.error("No text in response. Full response:", data);
+      throw new Error("No response from Gemini API");
+    }
+    
+    console.log("Raw API text (first 500 chars):", text.substring(0, 500));
+    
+    // Clean the JSON response - remove code fence markers
+    let cleanedText = text.replace(/```json\n?|```\n?/g, "").trim();
+    
+    // Try to extract JSON object - look for opening { and find matching }
+    let jsonStart = cleanedText.indexOf('{');
+    if (jsonStart === -1) {
+      throw new Error("No JSON object found in response");
+    }
+    
+    // Extract from { to the end, handling nested braces
+    let braceCount = 0;
+    let jsonEnd = -1;
+    for (let i = jsonStart; i < cleanedText.length; i++) {
+      if (cleanedText[i] === '{') braceCount++;
+      if (cleanedText[i] === '}') {
+        braceCount--;
+        if (braceCount === 0) {
+          jsonEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    if (jsonEnd === -1) {
+      throw new Error("Could not find matching closing brace in JSON");
+    }
+    
+    cleanedText = cleanedText.substring(jsonStart, jsonEnd);
+    console.log("Extracted JSON (first 300 chars):", cleanedText.substring(0, 300));
+    
+    try {
+      return JSON.parse(cleanedText);
+    } catch (parseError) {
+      console.error("JSON Parse Error:", parseError);
+      console.error("Full text attempted:", cleanedText);
+      // Log the problematic section
+      const errorPos = parseError.message.match(/position (\d+)/);
+      if (errorPos) {
+        const pos = parseInt(errorPos[1]);
+        console.error("Context around error:", cleanedText.substring(Math.max(0, pos - 50), pos + 50));
+      }
+      throw new Error(`Failed to parse API response: ${parseError.message}`);
+    }
   };
 
   const handleGenerate = async () => {
@@ -68,8 +127,8 @@ export default function ContentRepurposerPro() {
       setResults(repurposeResult);
       setActiveTab("twitter");
     } catch (err) {
-      console.error(err);
-      setError("Something went wrong. Please check your API configuration or try again.");
+      console.error("API Error:", err);
+      setError(err.message || "Something went wrong. Please check your API configuration or try again.");
     } finally {
       setLoading(false);
       setLoadingPhase("");

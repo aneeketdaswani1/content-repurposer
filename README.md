@@ -9,10 +9,11 @@ An AI-powered React application that analyzes long-form text and automatically r
 
 ## Tech Stack
 * React + Vite
-* Anthropic Claude API 
+* Google Gemini 2.5 Flash API
 
 ## Local Development
 1. Clone the repository.
 2. Run `npm install` to install dependencies.
-3. Create a `.env` file at the root and add your API key: `VITE_ANTHROPIC_API_KEY=your_key_here`
-4. Run `npm run dev` to start the local development server.
+3. Create a `.env` file at the root and add your Google API key: `VITE_GOOGLE_API_KEY=your_key_here`
+4. Get your free API key from [Google AI Studio](https://aistudio.google.com/apikey)
+5. Run `npm run dev` to start the local development server.
